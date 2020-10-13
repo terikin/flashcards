@@ -3,7 +3,7 @@ Math Facts practice program to help kids learn addition, multiplication tables, 
 
 # Setup
 1. Download this repository (or use `git clone ...`).
-1. Install Python for your operating system (https://www.python.org/downloads/).
+1. Install Python3 for your operating system (https://www.python.org/downloads/).
 1. Open a terminal and browse to the downloaded files (or local clone of the git repository).
 1. Install dependencies using:
 
