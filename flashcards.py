@@ -6,6 +6,7 @@
 from enum import Enum
 import secrets
 import time
+import yaml
 
 
 class ResponseMetadata:
@@ -17,6 +18,15 @@ class ResponseMetadata:
 
     def __repr__(self):
         return f'{self.answer} ({"correct" if self.correct else "incorrect"}): {self.time:.1f} seconds'
+
+    def as_yaml_dict(self):
+        return {'correct': self.correct,
+                'answer': self.answer,
+                'time': self.time}
+
+    @staticmethod
+    def from_yaml_dict(yaml_dict):
+        return ResponseMetadata(yaml_dict['correct'], yaml_dict['answer'], yaml_dict['time'])
 
 
 class Card:
@@ -31,6 +41,11 @@ class Card:
     class AnswerType(Enum):
         NULL = 0
         TEXT = 1
+
+    class Result(Enum):
+        INCORRECT = 0
+        CORRECT = 1
+        INVALID = 2
 
     def __init__(self, problem, answer_type):
         self.problem = problem
@@ -61,9 +76,10 @@ class Card:
         return self.problem, self.answer_type
 
     def log_response(self, given_answer, time):
-        correct = self._check_answer(given_answer)
-        self.responses.append(ResponseMetadata(correct, given_answer, time))
-        return correct
+        result = self._check_answer(given_answer)
+        if result is not Card.Result.INVALID:
+            self.responses.append(ResponseMetadata(result is Card.Result.CORRECT, given_answer, time))
+        return result
 
     def _check_answer(self, given_answer):
         """Return true if the provided answer is correct, otherwise return false"""
@@ -92,11 +108,26 @@ class Arithmetic(Card):
     def __repr__(self):
         return f"{self.problem}{self.answer}"
 
+    def as_yaml_dict(self):
+        return {'problem': self.problem,
+                'answer': self.answer,
+                'responses': [r.as_yaml_dict() for r in self.responses]}
+
+    @staticmethod
+    def from_yaml_dict(yaml_dict):
+        out = Arithmetic(yaml_dict['problem'], yaml_dict['answer'])
+        for r in yaml_dict['responses']:
+            out.responses.append(ResponseMetadata.from_yaml_dict(r))
+        return out
+
     def _check_answer(self, given_answer):
         try:
-            return self.answer == int(given_answer)
+            if self.answer == int(given_answer):
+                return Card.Result.CORRECT
+            else:
+                return Card.Result.INCORRECT
         except:
-            return False
+            return Card.Result.INVALID
 
 
 class Deck:
@@ -113,6 +144,16 @@ class Deck:
         for c in self.cards:
             out += f"{c}\n"
         return out
+
+    def as_yaml_dict(self):
+        return {"time_threshold": self.time_threshold,
+                "cards": [c.as_yaml_dict() for c in sorted(self.cards, reverse=True)]}
+
+    @staticmethod
+    def from_yaml_dict(yaml_dict):
+        # Note that this just assumes arithmetic for the moment.  Any generalization with other Card objects will require a fix.
+        cards = [Arithmetic.from_yaml_dict(cd) for cd in yaml_dict['cards']]
+        return Deck(cards, yaml_dict['time_threshold'])
 
     def worst_cards(self):
         total_time = sum([c.time() for c in self.cards])
@@ -168,6 +209,10 @@ def generate_division(start, stop, time_threshold=5):
     b = range(start, stop+1)
     cards = [Arithmetic(f'{x*y} ÷ {x} = ', y) for x in a for y in b]
     return Deck(cards, time_threshold)
+
+def load_deck(file):
+    with open(file) as ymlfile:
+        return Deck.from_yaml_dict(yaml.load(ymlfile, Loader=yaml.SafeLoader))
 
 
 if __name__ == "__main__":

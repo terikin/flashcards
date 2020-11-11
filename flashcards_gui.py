@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QLineEdit, QComboBox, QProgressBar, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QLineEdit, QComboBox, QProgressBar, QSizePolicy, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPalette
 import time
@@ -46,6 +46,14 @@ class FlashCards:
         file = self.current_config['log_file_dir'] / ("FlashCardsLog_" + self.current_config["name"] + "_" + dt_str + ".txt")
         file.write_text(self.deck.worst_cards())
 
+    def save_deck(self):
+        now = datetime.now()
+        dt_str = now.strftime("%Y%m%dT%H%M%S")
+        file = self.current_config['log_file_dir'] / ("FlashCardDeck_" + self.current_config["name"] + "_" + dt_str + ".yml")
+        with open(file, 'w') as ymlfile:
+            yd = self.deck.as_yaml_dict()
+            yaml.dump(yd, ymlfile)
+
     def load_configs(self):
         default = {
             "mastery_time": 5,
@@ -61,7 +69,7 @@ class FlashCards:
         configs = []
         for f in config_files:
             with open(f, "r") as ymlfile:
-                config = yaml.load(ymlfile)
+                config = yaml.load(ymlfile, Loader=yaml.SafeLoader)
                 # upgrade old config files
                 if 'log_file_dir' not in config:
                     config['log_file_dir'] = Path.home() / 'Desktop'
@@ -99,6 +107,15 @@ class FlashCards:
             update_config()
             self.save_config()
             self.deck = fc.generate_division(min_val.value(), max_val.value(), time_threshold=mastery_time.value())
+            self.run_deck()
+
+        def on_custom_clicked():
+            update_config()
+            self.save_config()
+            file, _ = QFileDialog.getOpenFileName(self.window, "Open Flashcard Deck", str(self.current_config["log_file_dir"]), "Flashcard decks (*.yml)")
+            self.deck = fc.load_deck(file)
+            for c in self.deck.cards:
+                c.responses = []
             self.run_deck()
 
         def update_config():
@@ -185,14 +202,17 @@ class FlashCards:
         subtraction = QPushButton("Subtraction")
         multiplication = QPushButton("Multiplication")
         division = QPushButton("Division")
+        custom = QPushButton("Load from File")
         addition.clicked.connect(on_addition_clicked)
         subtraction.clicked.connect(on_subtraction_clicked)
         multiplication.clicked.connect(on_multiplication_clicked)
         division.clicked.connect(on_division_clicked)
+        custom.clicked.connect(on_custom_clicked)
         button_layout.addWidget(addition)
         button_layout.addWidget(subtraction)
         button_layout.addWidget(multiplication)
         button_layout.addWidget(division)
+        button_layout.addWidget(custom)
         type_selection_layout.addLayout(button_layout)
 
         layout.addStretch()
@@ -210,14 +230,19 @@ class FlashCards:
 
         def on_answer_given():
             if not self.incorrect_delay:
-                correct = self.current_card.log_response(answer.text(), time.time() - self.t0)
-                if not correct:
+                result = self.current_card.log_response(answer.text().strip(), time.time() - self.t0)
+                if result == fc.Card.Result.INCORRECT:
                     answer.setText("Incorrect!")
                     answer.setDisabled(True)
                     # problem.setText(f"{problem.text()}\n\nIncorrect!")
                     self.incorrect_delay = True
-                    QTimer.singleShot(self.deck.time_threshold * 1000, on_answer_given)
+                    delay_time = min(int(2 * (time.time() - self.t0) * 1000), self.deck.time_threshold * 1000)
+                    QTimer.singleShot(delay_time, on_answer_given)
                     # warning - the program crashes if the user tries to enter another answer during this delay
+                    return
+                elif result == fc.Card.Result.INVALID:
+                    QMessageBox.critical(self.window, "                     Invalid response!                        ", f"Invalid response ({answer.text()}); try again.")
+                    answer.setText("")
                     return
             else:
                 self.incorrect_delay = False
@@ -237,6 +262,7 @@ class FlashCards:
                 problem.setTextInteractionFlags(Qt.TextSelectableByMouse)
                 answer.deleteLater()
                 self.save_log()
+                self.save_deck()
 
 
         self.current_card = self.deck.get_card()
