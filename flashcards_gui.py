@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QLineEdit, QComboBox, QProgressBar, QSizePolicy, QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QLineEdit, QComboBox, QProgressBar, QSizePolicy, QFileDialog, QMessageBox, QCheckBox, QFrame
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPalette
 import time
@@ -59,6 +59,8 @@ class FlashCards:
             "mastery_time": 5,
             "min_val": 0,
             "max_val": 12,
+            "min_val_b": 0,
+            "max_val_b": 12,
             "name": "Default",
             "log_file_dir": Path.home() / 'Desktop'
         }
@@ -71,10 +73,10 @@ class FlashCards:
             with open(f, "r") as ymlfile:
                 config = yaml.load(ymlfile, Loader=yaml.SafeLoader)
                 # upgrade old config files
-                if 'log_file_dir' not in config:
-                    config['log_file_dir'] = Path.home() / 'Desktop'
-                else:
-                    config['log_file_dir'] = Path(config['log_file_dir'])
+                for name in default.keys():
+                    if name not in config:
+                        config[name] = default[name]
+                config['log_file_dir'] = Path(config['log_file_dir'])
                 configs.append(config)
         print(configs)
 
@@ -84,29 +86,37 @@ class FlashCards:
 
 
     def home(self):
-        self.configs = self.load_configs()
-        def on_addition_clicked():
+        # self.configs = self.load_configs()
+        def get_vals():
             update_config()
             self.save_config()
-            self.deck = fc.generate_addition(min_val.value(), max_val.value(), time_threshold=mastery_time.value())
+            a_lims = (range_a.range_min(), range_a.range_max())
+            if pairs.checkState():
+                b_lims = None
+                range_type = fc.RangeTypes.InnerProduct
+            else:
+                b_lims = (range_b.range_min(), range_b.range_max())
+                range_type = fc.RangeTypes.OuterProduct
+            return fc.generate_pairs(a_lims, b_lims, range_type)
+
+        def on_addition_clicked():
+            self.deck = fc.generate_addition(get_vals(), time_threshold=mastery_time.value())
             self.run_deck()
 
         def on_subtraction_clicked():
-            update_config()
-            self.save_config()
-            self.deck = fc.generate_subtraction(min_val.value(), max_val.value(), time_threshold=mastery_time.value())
+            self.deck = fc.generate_subtraction(get_vals(), time_threshold=mastery_time.value())
             self.run_deck()
 
         def on_multiplication_clicked():
-            update_config()
-            self.save_config()
-            self.deck = fc.generate_multiplication(min_val.value(), max_val.value(), time_threshold=mastery_time.value())
+            self.deck = fc.generate_multiplication(get_vals(), time_threshold=mastery_time.value())
             self.run_deck()
 
         def on_division_clicked():
-            update_config()
-            self.save_config()
-            self.deck = fc.generate_division(min_val.value(), max_val.value(), time_threshold=mastery_time.value())
+            self.deck = fc.generate_division(get_vals(), time_threshold=mastery_time.value())
+            self.run_deck()
+
+        def on_sqrt_clicked():
+            self.deck = fc.generate_square_roots(get_vals(), time_threshold=mastery_time.value())
             self.run_deck()
 
         def on_custom_clicked():
@@ -121,20 +131,18 @@ class FlashCards:
         def update_config():
             self.current_config["name"] = config_name.currentText()
             self.current_config["mastery_time"] = mastery_time.value()
-            self.current_config["min_val"] = min_val.value()
-            self.current_config["max_val"] = max_val.value()
+            self.current_config["min_val"] = range_a.range_min()
+            self.current_config["max_val"] = range_a.range_max()
+            self.current_config["min_val_b"] = range_b.range_min()
+            self.current_config["max_val_b"] = range_b.range_max()
 
         def on_config_change():
             print(config_name.currentIndex())
             config = self.configs[config_name.currentIndex()]
             mastery_time.setValue(config["mastery_time"])
-            min_val.setValue(config["min_val"])
-            max_val.setValue(config["max_val"])
+            range_a.set_range(config["min_val"], config["max_val"])
+            range_b.set_range(config["min_val_b"], config["max_val_b"])
             self.current_config = config
-
-        def on_range_change():
-            min_val.setRange(0, max_val.value())
-            max_val.setRange(min_val.value(), 25)
 
         def update_configs():
             config_name.clear()
@@ -146,6 +154,54 @@ class FlashCards:
             if self.current_config["name"] == config_name.currentText():
                 self.delete_config()
                 config_name.removeItem(config_name.currentIndex())
+
+        class RangeSelect(QWidget):
+            def __init__(self, label="Min/Max Values", min_val=0, max_val=15):
+                super().__init__()
+                self.layout = QHBoxLayout()
+                self.label = QLabel(label)
+                self.start_val = QSpinBox()
+                self.start_val.setRange(0, max_val)
+                self.stop_val = QSpinBox()
+                self.stop_val.setRange(min_val, 25)
+                self.start_val.setValue(min_val)
+                self.stop_val.setValue(max_val)
+                self.start_val.valueChanged.connect(self.on_change)
+                self.stop_val.valueChanged.connect(self.on_change)
+                self.layout.addWidget(self.label)
+                self.layout.addStretch()
+                self.layout.addWidget(self.start_val)
+                self.layout.addWidget(self.stop_val)
+                self.setLayout(self.layout)
+
+            def on_change(self):
+                self.start_val.setRange(0, self.stop_val.value())
+                self.stop_val.setRange(self.start_val.value(), 25)
+
+            def range_min(self):
+                return int(self.start_val.value())
+
+            def range_max(self):
+                return int(self.stop_val.value())
+
+            def set_range(self, min_val, max_val):
+                self.start_val.setRange(0, max_val)
+                self.stop_val.setRange(min_val, 25)
+                self.start_val.setValue(min_val)
+                self.stop_val.setValue(max_val)
+                # print(f'Setting range to ({min_val}, {max_val}).')
+
+
+        def on_pairs_changed(pairs_mode):
+            range_b.setDisabled(pairs_mode)
+            if pairs_mode:
+                division.setText('Square Roots       (√(A×A))')
+                division.clicked.disconnect(on_division_clicked)
+                division.clicked.connect(on_sqrt_clicked)
+            else:
+                division.setText('Division           ((A×B) ÷ A)')
+                division.clicked.disconnect(on_sqrt_clicked)
+                division.clicked.connect(on_division_clicked)
 
         layout = QVBoxLayout()
         layout.addStretch()
@@ -175,34 +231,34 @@ class FlashCards:
 
         layout.addStretch()
 
-        layout_min = QHBoxLayout()
-        layout_min.addWidget(QLabel("Minimum Value"))
-        min_val = QSpinBox()
-        min_val.setRange(0, 25)
-        min_val.setValue(self.current_config["min_val"])
-        layout_min.addWidget(min_val)
-        layout.addLayout(layout_min)
+        range_a = RangeSelect("Min/Max Range for A", min_val=self.current_config["min_val"], max_val=self.current_config["max_val"])
+        layout.addWidget(range_a)
+        range_b = RangeSelect("Min/Max Range for B", min_val=self.current_config["min_val_b"], max_val=self.current_config["max_val_b"])
+        layout.addWidget(range_b)
 
-        layout_max = QHBoxLayout()
-        layout_max.addWidget(QLabel("Maximum Value"))
-        max_val = QSpinBox()
-        max_val.setRange(1, 25)
-        max_val.setValue(self.current_config["max_val"])
-        layout_max.addWidget(max_val)
-        layout.addLayout(layout_max)
+        pairs_layout = QHBoxLayout()
+        pairs_layout.addWidget(QLabel('Pairs?'))
+        pairs_layout.addStretch()
+        pairs = QCheckBox()
+        pairs_layout.addWidget(pairs)
+        pairs.stateChanged.connect(on_pairs_changed)
+        layout.addLayout(pairs_layout)
 
-        min_val.valueChanged.connect(on_range_change)
-        max_val.valueChanged.connect(on_range_change)
+        hline = QFrame()
+        hline.setFrameShape(QFrame.HLine)
+        hline.setFrameShadow(QFrame.Sunken)
+        hline.setMinimumHeight(40)
+        layout.addWidget(hline)
 
         type_selection_layout = QHBoxLayout()
         type_selection_layout.addWidget(QLabel("Select type of flashcards:"))
 
         button_layout = QVBoxLayout()
-        addition = QPushButton("Addition")
-        subtraction = QPushButton("Subtraction")
-        multiplication = QPushButton("Multiplication")
-        division = QPushButton("Division")
-        custom = QPushButton("Load from File")
+        addition = QPushButton("Addition                 (A + B)")
+        subtraction = QPushButton("Subtraction      ((A+B) - A)")
+        multiplication = QPushButton("Multiplication         (A × B)")
+        division = QPushButton("Division           ((A×B) ÷ A)")
+        custom = QPushButton("Load from File                   ")
         addition.clicked.connect(on_addition_clicked)
         subtraction.clicked.connect(on_subtraction_clicked)
         multiplication.clicked.connect(on_multiplication_clicked)
@@ -218,6 +274,8 @@ class FlashCards:
         layout.addStretch()
         layout.addLayout(type_selection_layout)
         layout.addStretch()
+
+        # on_config_change()
         return layout
 
     def run_deck(self):

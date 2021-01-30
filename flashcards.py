@@ -186,29 +186,54 @@ class Deck:
         return completed, len(self.cards)
 
 
-def generate_addition(start, stop, time_threshold=5):
-    a = range(start, stop+1)
-    b = range(start, stop+1)
-    cards = [Arithmetic(f'{x} + {y} = ', x+y) for x in a for y in b]
+class RangeTypes(Enum):
+    OuterProduct = 0
+    InnerProduct = 1
+
+
+def generate_pairs(a_lims, b_lims=None, range_type=RangeTypes.OuterProduct):
+    assert (len(a_lims) == 2)
+    if not b_lims:
+        b_lims = a_lims
+    else:
+        assert (len(b_lims) == 2)
+
+    a = range(a_lims[0], a_lims[1] + 1)
+    b = range(b_lims[0], b_lims[1] + 1)
+    if range_type is RangeTypes.OuterProduct:
+        vals = [ (x, y) for x in a for y in b]
+    elif range_type is range_type.InnerProduct:
+        vals = [ v for v in zip(a, b)]
+    return vals
+
+
+def generate_addition(vals, time_threshold=5):
+    cards = [Arithmetic(f'{x} + {y} = ', x+y) for (x, y) in vals]
     return Deck(cards, time_threshold)
 
-def generate_subtraction(start, stop, time_threshold=5):
-    a = range(start, stop+1)
-    b = range(start, stop+1)
-    cards = [Arithmetic(f'{x+y} - {x} = ', y) for x in a for y in b]
+
+def generate_subtraction(vals, time_threshold=5):
+    cards = [Arithmetic(f'{x+y} - {x} = ', y) for (x, y) in vals]
     return Deck(cards, time_threshold)
 
-def generate_multiplication(start, stop, time_threshold=5):
-    a = range(start, stop+1)
-    b = range(start, stop+1)
-    cards = [Arithmetic(f'{x} × {y} = ', x*y) for x in a for y in b]
+
+def generate_multiplication(vals, time_threshold=5):
+    cards = [Arithmetic(f'{x} × {y} = ', x*y) for (x, y) in vals]
     return Deck(cards, time_threshold)
 
-def generate_division(start, stop, time_threshold=5):
-    a = range(max(1, start), stop+1)
-    b = range(start, stop+1)
-    cards = [Arithmetic(f'{x*y} ÷ {x} = ', y) for x in a for y in b]
+
+def generate_division(vals, time_threshold=5):
+    cards = []
+    for (x, y) in vals:
+        if not (x == 0):
+            cards.append(Arithmetic(f'{x*y} ÷ {x} = ', y))
     return Deck(cards, time_threshold)
+
+
+def generate_square_roots(vals, time_threshold=5):
+    cards = [Arithmetic(f'√{x*x} = ', x) for (x, y) in vals]
+    return Deck(cards, time_threshold)
+
 
 def load_deck(file):
     with open(file) as ymlfile:
